@@ -15,6 +15,7 @@
 
 import numpy as np
 import tensorflow as tf
+import torch.nn as nn
 
 def learn_scheduler(lr_dec, lr):
     def learning_scheduler_fn(epoch):
@@ -37,15 +38,41 @@ def get_callbacks(tb_log_save_path, saved_model_path, lr_dec, lr):
     return [tb, model_checkpoint, lr_decay]
 
 
-def marginLoss(y_true, y_pred):
-    lbd = 0.5
-    m_plus = 0.9
-    m_minus = 0.1
+# def marginLoss(y_true, y_pred):
+#     lbd = 0.5
+#     m_plus = 0.9
+#     m_minus = 0.1
     
-    L = y_true * tf.square(tf.maximum(0., m_plus - y_pred)) + \
-    lbd * (1 - y_true) * tf.square(tf.maximum(0., y_pred - m_minus))
+#     L = y_true * tf.square(tf.maximum(0., m_plus - y_pred)) + \
+#     lbd * (1 - y_true) * tf.square(tf.maximum(0., y_pred - m_minus))
 
-    return tf.reduce_mean(tf.reduce_sum(L, axis=1))
+#     return tf.reduce_mean(tf.reduce_sum(L, axis=1))
+
+def marginLoss(y_pred, y_true):
+    """
+    :param projections: torch.Tensor, shape [batch_size, projection_dim]
+    :param targets: torch.Tensor, shape [batch_size]
+    :return: torch.Tensor, scalar
+    """
+    temperature=0.07
+    device = torch.device("cuda") if projections.is_cuda else torch.device("cpu")
+
+    dot_product_tempered = torch.mm(projections, projections.T) / temperature
+    # Minus max for numerical stability with exponential. Same done in cross entropy. Epsilon added to avoid log(0)
+    exp_dot_tempered = (
+        torch.exp(dot_product_tempered - torch.max(dot_product_tempered, dim=1, keepdim=True)[0]) + 1e-5
+    )
+
+    mask_similar_class = (targets.unsqueeze(1).repeat(1, targets.shape[0]) == targets).to(device)
+    mask_anchor_out = (1 - torch.eye(exp_dot_tempered.shape[0])).to(device)
+    mask_combined = mask_similar_class * mask_anchor_out
+    cardinality_per_samples = torch.sum(mask_combined, dim=1)
+
+    log_prob = -torch.log(exp_dot_tempered / (torch.sum(exp_dot_tempered * mask_anchor_out, dim=1, keepdim=True)))
+    supervised_contrastive_loss_per_sample = torch.sum(log_prob * mask_combined, dim=1) / cardinality_per_samples
+    
+
+    return torch.mean(supervised_contrastive_loss_per_sample)
 
 
 def multiAccuracy(y_true, y_pred):
