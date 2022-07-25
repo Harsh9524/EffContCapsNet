@@ -15,7 +15,8 @@
 
 import numpy as np
 import tensorflow as tf
-import torch.nn as nn
+import tensorflow_addons as tfa
+# import torch.nn as nn
 
 def learn_scheduler(lr_dec, lr):
     def learning_scheduler_fn(epoch):
@@ -48,31 +49,35 @@ def get_callbacks(tb_log_save_path, saved_model_path, lr_dec, lr):
 
 #     return tf.reduce_mean(tf.reduce_sum(L, axis=1))
 
-def marginLoss(y_pred, y_true):
-    """
-    :param projections: torch.Tensor, shape [batch_size, projection_dim]
-    :param targets: torch.Tensor, shape [batch_size]
-    :return: torch.Tensor, scalar
-    """
-    temperature=0.07
-    device = torch.device("cuda") if y_pred.is_cuda else torch.device("cpu")
+# def marginLoss(y_pred, y_true):
+#     """
+#     :param projections: torch.Tensor, shape [batch_size, projection_dim]
+#     :param targets: torch.Tensor, shape [batch_size]
+#     :return: torch.Tensor, scalar
+#     """
+#     temperature=0.07
+#     device = torch.device("cuda") if y_pred.is_cuda else torch.device("cpu")
 
-    dot_product_tempered = torch.mm(y_pred, y_pred.T) / temperature
-    # Minus max for numerical stability with exponential. Same done in cross entropy. Epsilon added to avoid log(0)
-    exp_dot_tempered = (
-        torch.exp(dot_product_tempered - torch.max(dot_product_tempered, dim=1, keepdim=True)[0]) + 1e-5
-    )
+#     dot_product_tempered = torch.mm(y_pred, y_pred.T) / temperature
+#     # Minus max for numerical stability with exponential. Same done in cross entropy. Epsilon added to avoid log(0)
+#     exp_dot_tempered = (
+#         torch.exp(dot_product_tempered - torch.max(dot_product_tempered, dim=1, keepdim=True)[0]) + 1e-5
+#     )
 
-    mask_similar_class = (y_true.unsqueeze(1).repeat(1, y_true.shape[0]) == targets).to(device)
-    mask_anchor_out = (1 - torch.eye(exp_dot_tempered.shape[0])).to(device)
-    mask_combined = mask_similar_class * mask_anchor_out
-    cardinality_per_samples = torch.sum(mask_combined, dim=1)
+#     mask_similar_class = (y_true.unsqueeze(1).repeat(1, y_true.shape[0]) == targets).to(device)
+#     mask_anchor_out = (1 - torch.eye(exp_dot_tempered.shape[0])).to(device)
+#     mask_combined = mask_similar_class * mask_anchor_out
+#     cardinality_per_samples = torch.sum(mask_combined, dim=1)
 
-    log_prob = -torch.log(exp_dot_tempered / (torch.sum(exp_dot_tempered * mask_anchor_out, dim=1, keepdim=True)))
-    supervised_contrastive_loss_per_sample = torch.sum(log_prob * mask_combined, dim=1) / cardinality_per_samples
+#     log_prob = -torch.log(exp_dot_tempered / (torch.sum(exp_dot_tempered * mask_anchor_out, dim=1, keepdim=True)))
+#     supervised_contrastive_loss_per_sample = torch.sum(log_prob * mask_combined, dim=1) / cardinality_per_samples
     
 
-    return torch.mean(supervised_contrastive_loss_per_sample)
+#     return torch.mean(supervised_contrastive_loss_per_sample)
+
+def marginLoss(y_pred,y_true,margin = 0.7):
+    
+    return tfa.losses.contrastive_loss(y_true,y_pred,margin)
 
 
 def multiAccuracy(y_true, y_pred):
